@@ -1,0 +1,796 @@
+{% extends "base.htm" %}
+{% load static %}
+{% block main-content %}
+    <div class="camera-feed">
+        <!-- dữ liệu ẩn của camera đang được chọn-->
+        <div id="camera-data" data-id="{{ selected_camera.id }}" data-name="{{ selected_camera.name }}"></div>
+        <!-- Video element to display camera feed -->
+        <div class="container d-flex justify-content-start align-items-start" id="drag-container">
+            <!-- Khung hiển thị video có tính năng kéo để thay đổi kích thước -->
+            <div class="video-container position-relative d-flex" id="resizable-video-container" style="width: 550px; height: auto;">
+                {% if selected_camera %}
+                    {% if camera_online %}
+                        <img id="camera" class="w-90 h-auto" controls autoplay muted preload="auto" src="{% url 'stream_camera' selected_camera.id %}" style = "max-width: 550px; height: auto;"
+                        alt="Lỗi khi lấy dữ liệu từ camera">
+                    {% else %}
+                        <!-- Hiển thị thông báo lỗi khi không kết nối được -->
+                        <div class="alert alert-danger" role="alert">
+                            Không thể kết nối với thiết bị camera. Vui lòng kiểm tra lại kết nối hoặc thông tin camera.
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <p>Chưa có camera được chọn.</p>
+                {% endif %}
+                <!-- Nút nắm để kéo thay đổi kích thước -->
+                <div id="resize-handle" class="resize-handle position-absolute"></div>
+            </div>
+
+            <!-- Khung hiển thị hình ảnh -->
+            <div class="image-container ml-4">
+                <h5 id="captured-image-title">Hình ảnh chụp:</h5>
+                <img id="captured-image" src="{% static 'app/images/camera-feed.png' %}" alt="Chưa có hình ảnh" class="img-thumbnail border border-primary rounded shadow p-2">
+                <br>
+                <button id="download-btn" class="btn btn-primary" onClick="taiAnh()">Tải ảnh về máy</button>  <!--tải ảnh về máy-->
+                <button id="delete-btn" class="btn btn-danger delete-btn" data-url="{{ full_image_url }}">Xóa ảnh</button>     <!--xóa ảnh trong CSDL-->
+            </div>
+            <!-- Khung hiển thị hình ảnh -->
+            <div class="image-container ml-4">
+                <h5 id="captured-image-title-live">Hình ảnh được ghi:</h5>
+                <img id="captured-image-live" src="{% static 'app/images/camera-feed.png' %}" alt="Chưa có hình ảnh" class="img-thumbnail border border-primary rounded shadow p-2">
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <button id="capture-btn" class="btn btn-primary" onClick="chupAnh()">Chụp ảnh</button>
+            {% comment %} <button id="record-btn" class="btn btn-danger" onClick="ghiHinh()">Ghi hình</button> {% endcomment %}
+            <canvas id="snapshot" class="d-none"></canvas>
+            <!-- Chọn ngày và Timeline -->
+            <h5>Chọn ngày và xem cây thời gian</h5>
+            <div class="form-group d-flex align-items-center">
+                <label for="selected-date" class="mr-2">Chọn ngày:</label>
+                <input type="date" id="selected-date" class="form-control w-auto mr-2" onchange="loadTimeline()">
+            </div>
+            <div id="timeline-container" class="mt-3">
+                <!-- Timeline sẽ được hiển thị ở đây -->
+                <p> <b> Không có dữ liệu cho ngày này. </b> </p>
+            </div>
+            <!-- Thêm Nút Điều Khiển ở đây -->
+            <div class="navigation-buttons mt-3 text-center">
+                <button id="prev-button" class="btn btn-outline-primary mr-2" style="display : none;" onclick="navigateEvent('prev')" disabled>Trước đó</button>
+                <button id="next-button" class="btn btn-outline-primary" style="display : none;" onclick="navigateEvent('next')" disabled>Tiếp theo</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    // sự kiện nhấn nút Chụp ảnh
+        function chupAnh() {
+            document.getElementById('capture-btn').addEventListener('click', function() {
+            const videoElement = document.getElementById('camera');  // Lấy thẻ img (stream)
+            const canvas = document.createElement('canvas'); // Tạo một thẻ canvas để vẽ hình ảnh từ video
+            canvas.width = videoElement.width;
+            canvas.height = videoElement.height;
+
+            const context = canvas.getContext('2d');
+            context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);  // Vẽ khung hình hiện tại của video lên canvas
+
+            // Tạo liên kết để tải xuống hình ảnh
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/jpeg');  // Lấy dữ liệu ảnh từ canvas
+            link.download = 'camera_image.jpg';  // Đặt tên file ảnh khi tải xuống
+            // Hiển thị ảnh trên <img> với id "captured-image"
+            let imageUrl = canvas.toDataURL('image/png');
+            let capturedImage = document.getElementById('captured-image');
+            capturedImage.src = imageUrl;
+
+            let capturedImageTitle = document.getElementById('captured-image-title');
+            capturedImageTitle.innerText = "Hình ảnh chụp:";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);  // Xóa liên kết khỏi DOM sau khi tải xong
+            
+        });
+        }
+    </script>
+    <script>
+        let mediaRecorder;
+        let chunks = [];
+        let recording = false;  // Giả sử giá trị này được lưu trữ bên ngoài hàm
+        function ghiHinh() {
+            let video = document.getElementById('camera');
+            
+            
+            if (!recording) {
+                if ('captureStream' in video) {
+                    let stream = video.captureStream();
+                    mediaRecorder = new MediaRecorder(stream);
+                } else {
+                    alert('captureStream() không được hỗ trợ trên trình duyệt này');
+                    return;
+                }
+
+                mediaRecorder.ondataavailable = function(event) {
+                    chunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = function() {
+                    let blob = new Blob(chunks, { type: 'video/webm' });
+                    let downloadLink = document.createElement('a');
+                    downloadLink.href = URL.createObjectURL(blob);
+                    downloadLink.download = 'recorded_video.webm';
+                    downloadLink.click();
+                    chunks = [];
+                };
+
+                mediaRecorder.onerror = function(event) {
+                    alert('Lỗi trong quá trình ghi: ' + event.error);
+                };
+
+                mediaRecorder.start();
+                document.getElementById('record-btn').innerText = 'Dừng ghi';
+                recording = true;
+            } else {
+                mediaRecorder.stop();
+                document.getElementById('record-btn').innerText = 'Ghi hình';
+                recording = false;
+            }
+        }
+    </script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        let intervalId;
+
+        function startLayDuLieu() {
+            intervalId = setInterval(captureImage, 10000); // Gọi hàm captureImage sau mỗi 10 giây
+        }
+
+        function stopLayDuLieu() {
+            clearInterval(intervalId);
+            console.log("Dừng lấy dữ liệu.");
+        }
+
+        // Kiểm tra người dùng có đăng nhập hay không
+        {% if request.user.is_authenticated %}
+            // Người dùng đã đăng nhập, bắt đầu gọi captureImage
+            captureImage();
+            startLayDuLieu();
+        {% else %}
+            console.log("Người dùng chưa đăng nhập.");
+        {% endif %}
+
+        function captureImage() {
+            let imgElement = document.getElementById('camera'); // Lấy thẻ img với ID "camera"
+            let canvas = document.getElementById('snapshot'); // Lấy thẻ canvas
+            let context = canvas.getContext('2d');
+
+            // Kiểm tra nếu imgElement có src
+            if (imgElement.src) {
+                // Cài đặt kích thước canvas theo kích thước của hình ảnh trong thẻ img
+                canvas.width = imgElement.width;
+                canvas.height = imgElement.height;
+
+                context.drawImage(imgElement, 0, 0, canvas.width, canvas.height); // Vẽ hình ảnh từ thẻ img
+
+                let imageData = canvas.toDataURL('image/png'); // Lấy dữ liệu hình ảnh từ canvas
+                capturedImage = document.getElementById('captured-image-live'); // Lấy thẻ img hiển thị hình ảnh đã chụp
+
+                if (capturedImage) {
+                    capturedImage.src = imageData; // Cập nhật src của img hiển thị ảnh đã chụp
+                } else {
+                    console.error('Không tìm thấy thẻ img với ID captured-image-live');
+                }
+
+                // Gửi dữ liệu hình ảnh lên server
+                fetch('/upload_image/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ image: imageData })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log(`Đã lưu ảnh: ${data.file_name}`);
+                    } else {
+                        console.error('Lỗi khi lưu ảnh:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Lỗi mạng:', error);
+                });
+            } else {
+                console.error('Không tìm thấy nguồn hình ảnh trong thẻ img');
+            }
+        }
+
+        // Hàm để lấy CSRF token từ cookie
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                let cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    let cookie = cookies[i].trim();
+                    // Kiểm tra nếu cookie bắt đầu bằng tên
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    });
+</script>
+
+
+    <!-- Mẫu Timeline: Timeline Tượng trưng -->
+    <script>
+
+        let eventsList = []; // Danh sách các sự kiện
+        let currentEventIndex = -1; // Chỉ số của sự kiện hiện tại (-1 nghĩa là chưa chọn)
+
+        /**
+        * Tạo timeline tượng trưng với các điểm màu xanh tại các thời gian có sự kiện.
+        * Các đoạn màu xám biểu thị không có dữ liệu.
+        * @param {Array} events - Mảng các đối tượng sự kiện với các thuộc tính time và event.
+        * @returns {HTMLElement} - Phần tử DOM của timeline.
+        */
+        function generateSymbolicTimeline(events) {
+
+            prevButton = document.getElementById('prev-button');
+            nextButton = document.getElementById('next-button');
+            prevButton.style.display = 'none';
+            nextButton.style.display = 'none';
+            // Cập nhật danh sách sự kiện
+            eventsList = events;
+            currentEventIndex = -1; // Reset khi tạo timeline mới
+
+            // Định nghĩa thời gian bắt đầu và kết thúc của timeline (00:00:00 đến 23:59:59)
+            const timelineStart = 0; // phút
+            const timelineEnd = 24 * 60; // 1440 phút
+
+            // Chuyển đổi thời gian sự kiện thành phút và giây
+            const eventTimes = events.map(event => {
+                const [hours, minutes, seconds] = event.time.split(':').map(Number);
+                return hours * 60 + minutes + seconds / 60; // Tổng số phút với phần giây được chuyển đổi thành phút
+            }).sort((a, b) => a - b);
+
+            // Định nghĩa khoảng thời gian mỗi slot (ví dụ: mỗi giờ)
+            const slotDuration = 60; // phút
+            const numberOfSlots = timelineEnd / slotDuration; // 24 slot
+
+            // Tạo container cho timeline
+            const timelineDiv = document.createElement('div');
+            timelineDiv.className = 'symbolic-timeline';
+
+            for (let i = 0; i < numberOfSlots; i++) {
+                const slotStart = i * slotDuration;
+                const slotEnd = slotStart + slotDuration;
+
+                // Tạo phần tử slot
+                const slot = document.createElement('div');
+                slot.className = 'timeline-slot';
+                slot.style.backgroundColor = '#d3d3d3'; // Màu xám mặc định
+                slot.title = 'Không có dữ liệu';
+
+                // Kiểm tra các sự kiện trong slot này
+                const eventsInSlot = events.filter(event => {
+                    const [hours, minutes, seconds] = event.time.split(':').map(Number);
+                    const timeInMinutes = hours * 60 + minutes + seconds / 60;
+                    return timeInMinutes >= slotStart && timeInMinutes < slotEnd;
+                });
+
+                if (eventsInSlot.length > 0) {
+                    // Giữ màu xám cho slot
+
+                    // Thêm điểm màu xanh cho mỗi sự kiện trong slot
+                    eventsInSlot.forEach(event => {
+                        prevButton.style.display = 'inline-block';
+                        nextButton.style.display = 'inline-block';
+
+
+                        const eventDot = document.createElement('div');
+                        eventDot.className = 'event-dot';
+                        eventDot.style.left = calculatePosition(event.time, slotStart, slotDuration) + '%';
+                        eventDot.title = `${event.time}: ${event.event}`;
+                        eventDot.setAttribute('data-toggle', 'tooltip');
+                        eventDot.setAttribute('data-placement', 'top');
+                        eventDot.setAttribute('data-html', 'true'); // Cho phép HTML trong tooltip
+                        eventDot.setAttribute('data-original-title', `<strong>${event.time}</strong>`);
+                        
+                        // Đảm bảo event-dot nằm trên slot
+                        eventDot.style.zIndex = '10'; // Đặt z-index cao hơn slot
+
+                        eventDot.addEventListener('click', function() {
+                            const capturedImage = document.getElementById('captured-image');
+                            const imageUrl = event.image_url;
+                            fetch(`/snapshot/?url=${imageUrl}`)
+                                .then(response => {
+                                    if (!response.ok) {
+                                        throw new Error('Không thể tải ảnh');
+                                    }
+                                    return response.blob();  // Trả về dữ liệu ảnh dưới dạng blob
+                                })
+                                .then(blob => {
+                                    // Tạo một URL đối tượng từ blob để hiển thị ảnh
+                                    const imageObjectUrl = URL.createObjectURL(blob);
+                                    
+                                    // Gán URL ảnh vào thuộc tính src của capturedImage
+                                    const capturedImage = document.getElementById('captured-image');  // Giả sử bạn có một phần tử ảnh
+                                    capturedImage.src = imageObjectUrl;
+                                })
+                                .catch(error => {
+                                    console.error('Lỗi khi tải ảnh:', error);
+                                });
+                            capturedImage.alt = event.event; // Cập nhật alt nếu cần
+                            let capturedImageTitle = document.getElementById('captured-image-title');
+                            capturedImageTitle.innerText = "Hình ảnh " + event.time + " " + event.date + ":";
+                            // Cập nhật chỉ số sự kiện hiện tại
+                            currentEventIndex = eventsList.indexOf(event);
+
+                            // Đánh dấu sự kiện được chọn
+                            updateSelectedEvent();
+                        });
+
+                        slot.appendChild(eventDot);
+                    });
+                }
+
+                timelineDiv.appendChild(slot);
+            }
+
+            // Khởi tạo Bootstrap tooltips nếu đang sử dụng Bootstrap
+            $(function () {
+                $('[data-toggle="tooltip"]').tooltip();
+            });
+
+            return timelineDiv;
+        }
+
+        /**
+        * Tính toán vị trí phần trăm từ thời gian sự kiện trong slot.
+        * @param {String} time - Thời gian sự kiện (HH:MM:SS).
+        * @param {Number} slotStart - Thời gian bắt đầu của slot (tính bằng phút).
+        * @param {Number} slotDuration - Thời gian của slot (tính bằng phút).
+        * @returns {Number} - Vị trí phần trăm từ bên trái.
+        */
+        function calculatePosition(time, slotStart, slotDuration) {
+            const [hours, minutes, seconds] = time.split(':').map(Number);
+            const timeInMinutes = hours * 60 + minutes + seconds / 60;
+            const minutesIntoSlot = timeInMinutes - slotStart;
+            return (minutesIntoSlot / slotDuration) * 100;
+        }
+
+        function updateSelectedEvent() {
+            // Loại bỏ lớp 'selected' từ tất cả các event-dot
+            document.querySelectorAll('.event-dot').forEach(dot => {
+                dot.classList.remove('selected');
+            });
+
+            if (currentEventIndex >= 0 && currentEventIndex < eventsList.length) {
+                const selectedEvent = eventsList[currentEventIndex];
+                // Tìm tất cả các event-dot và tìm event-dot tương ứng
+                const eventDots = document.querySelectorAll('.event-dot');
+                eventDots.forEach(dot => {
+                    if (dot.title === `${selectedEvent.time}: ${selectedEvent.event}`) {
+                        dot.classList.add('selected');
+                    }
+                });
+            }
+
+            // Cập nhật nút Next và Previous
+            updateNavigationButtons();
+        }
+
+        function updateNavigationButtons() {
+            const prevButton = document.getElementById('prev-button');
+            const nextButton = document.getElementById('next-button');
+
+            if (currentEventIndex <= 0) {
+                prevButton.disabled = true;
+            } else {
+                prevButton.disabled = false;
+            }
+
+            if (currentEventIndex >= eventsList.length - 1) {
+                nextButton.disabled = true;
+            } else {
+                nextButton.disabled = false;
+            }
+        }
+
+        function navigateEvent(direction) {
+            if (direction === 'next') {
+                if (currentEventIndex < eventsList.length - 1) {
+                    currentEventIndex++;
+                    const event = eventsList[currentEventIndex];
+                    const capturedImage = document.getElementById('captured-image');
+                    const imageUrl = event.image_url;
+                    fetch(`/snapshot/?url=${imageUrl}`)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Không thể tải ảnh');
+                            }
+                            return response.blob();  // Trả về dữ liệu ảnh dưới dạng blob
+                        })
+                        .then(blob => {
+                            // Tạo một URL đối tượng từ blob để hiển thị ảnh
+                            const imageObjectUrl = URL.createObjectURL(blob);
+                            
+                            // Gán URL ảnh vào thuộc tính src của capturedImage
+                            const capturedImage = document.getElementById('captured-image');  // Giả sử bạn có một phần tử ảnh
+                            capturedImage.src = imageObjectUrl;
+                        })
+                        .catch(error => {
+                            console.error('Lỗi khi tải ảnh:', error);
+                        });
+                    capturedImage.alt = event.event;
+                    let capturedImageTitle = document.getElementById('captured-image-title');
+                    capturedImageTitle.innerText = "Hình ảnh " + event.time + " " + event.date + ":";
+                    updateSelectedEvent();
+                }
+            } else if (direction === 'prev') {
+                if (currentEventIndex > 0) {
+                    currentEventIndex--;
+                    const event = eventsList[currentEventIndex];
+                    const capturedImage = document.getElementById('captured-image');
+                    const imageUrl = event.image_url;
+                    fetch(`/snapshot/?url=${imageUrl}`)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Không thể tải ảnh');
+                            }
+                            return response.blob();  // Trả về dữ liệu ảnh dưới dạng blob
+                        })
+                        .then(blob => {
+                            // Tạo một URL đối tượng từ blob để hiển thị ảnh
+                            const imageObjectUrl = URL.createObjectURL(blob);
+                            
+                            // Gán URL ảnh vào thuộc tính src của capturedImage
+                            const capturedImage = document.getElementById('captured-image');  // Giả sử bạn có một phần tử ảnh
+                            capturedImage.src = imageObjectUrl;
+                        })
+                        .catch(error => {
+                            console.error('Lỗi khi tải ảnh:', error);
+                        });
+                    capturedImage.alt = event.event;
+                    let capturedImageTitle = document.getElementById('captured-image-title');
+                    capturedImageTitle.innerText = "Hình ảnh " + event.time + " " + event.date + ":";
+                    updateSelectedEvent();
+                }
+            }
+        }
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'ArrowRight') {
+                navigateEvent('next');
+            } else if (event.key === 'ArrowLeft') {
+                navigateEvent('prev');
+            }
+        });
+
+
+        function loadTimeline() {
+            // ẩn 2 nút điều hướng event-dot
+            prevButton = document.getElementById('prev-button');
+            nextButton = document.getElementById('next-button');
+            prevButton.style.display = 'none';
+            nextButton.style.display = 'none';
+
+            const selectedDate = document.getElementById('selected-date').value;
+            const timelineContainer = document.getElementById('timeline-container');
+            const cameraDataElement = document.getElementById('camera-data');
+            // Khởi tạo đối tượng selected_camera từ các thuộc tính data-* của thẻ
+            const selected_camera = {
+                id: cameraDataElement.getAttribute('data-id'),
+                name: cameraDataElement.getAttribute('data-name'),
+            };
+            // Xóa nội dung trước đó
+            timelineContainer.innerHTML = '';
+
+            if (!selectedDate) {
+                timelineContainer.innerHTML = '<h5>Vui lòng chọn một ngày.</h5>';
+                return;
+            }
+
+            // Lấy dữ liệu timeline từ backend
+            fetch(`/get-timeline-data/?date=${selectedDate}&id=${selected_camera.id}`)  // Thêm camera_id vào URL
+                .then(response => response.json())
+                .then(data => {
+                    if (data.events && data.events.length > 0) {
+                        // Tạo timeline tượng trưng
+                        const timeline = generateSymbolicTimeline(data.events);
+                        timelineContainer.appendChild(timeline);
+                    } else {
+                        // Hiển thị thông báo nếu không có dữ liệu
+                        timelineContainer.innerHTML = '<h5>Không có dữ liệu cho ngày này.</h5>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Lỗi khi lấy dữ liệu timeline:', error);
+                    timelineContainer.innerHTML = '<h5>Đã xảy ra lỗi khi tải dữ liệu.</h5>';
+                });
+        }
+
+        
+        $(document).on('click', '.delete-btn', function() {
+            const event = eventsList[currentEventIndex];
+            const imageUrl = event.image_url;
+            var fullImageUrl = imageUrl;
+
+            if (confirm('Bạn có chắc muốn xóa ảnh này không?')) {
+                $.ajax({
+                    url: '{% url "delete_snapshot" %}',
+                    method: 'POST',
+                    data: {
+                        'full_image_url': fullImageUrl,
+                        'csrfmiddlewaretoken': '{{ csrf_token }}'  // Bảo mật CSRF
+                    },
+                    success: function(response) {
+                        alert(response.success);
+                        // Thực hiện các hành động khác sau khi xóa, như cập nhật giao diện
+                    },
+                    error: function(response) {
+                        alert(response.responseJSON.error);
+                    }
+                });
+            }
+        });
+    </script>
+
+    <script>
+        function taiAnh() {
+            // Lấy thẻ ảnh
+            var img = document.getElementById('captured-image');
+
+            
+            // Tạo một thẻ liên kết tạm thời
+            var lienKet = document.createElement('a');
+            
+            // Gán thuộc tính href là đường dẫn tới ảnh (src của thẻ img)
+            lienKet.href = img.src;
+            
+            // Gán thuộc tính download với tên tệp mặc định
+            lienKet.download = 'captured_image.png';
+            
+            // Thêm thẻ liên kết vào tài liệu tạm thời
+            document.body.appendChild(lienKet);
+            
+            // Tự động click vào thẻ liên kết để tải ảnh
+            lienKet.click();
+            
+            // Xóa thẻ liên kết khỏi tài liệu sau khi tải xong
+            document.body.removeChild(lienKet);
+        }
+    </script>
+
+
+    <!--kéo thả hiển thị video-->
+    <script>
+        // Lưu trữ phần tử đang được kéo
+        let draggedItem = null;
+
+        // Khi phần tử bắt đầu được kéo
+        document.querySelectorAll('.video-container, .image-container').forEach(item => {
+            item.addEventListener('dragstart', function (e) {
+                draggedItem = this;
+                e.dataTransfer.effectAllowed = 'move';
+                setTimeout(() => {
+                    this.style.display = 'none';  // Ẩn phần tử khi kéo
+                }, 0);
+            });
+
+            // Khi kết thúc kéo
+            item.addEventListener('dragend', function () {
+                setTimeout(() => {
+                    draggedItem.style.display = 'block';  // Hiển thị lại phần tử
+                    draggedItem = null;
+                }, 0);
+            });
+        });
+
+        // Khu vực có thể thả phần tử (ở đây là container chính)
+        const container = document.getElementById('drag-container');
+
+        // Cho phép thả vào container
+        container.addEventListener('dragover', function (e) {
+            e.preventDefault();  // Cho phép thả
+        });
+
+        // Xử lý khi phần tử được thả
+        container.addEventListener('drop', function (e) {
+            e.preventDefault();
+            if (draggedItem) {
+                this.appendChild(draggedItem);  // Đặt phần tử được kéo vào vị trí mới trong container
+            }
+        });
+    </script>
+
+    <script>
+        const resizableVideoContainer = document.getElementById('resizable-video-container');
+        const resizeHandle = document.getElementById('resize-handle');
+        let isResizing = false;
+
+        // Vị trí bắt đầu kéo
+        let startX, startY, startWidth, startHeight;
+
+        // Bắt đầu quá trình thay đổi kích thước
+        resizeHandle.addEventListener('mousedown', function (e) {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = parseInt(document.defaultView.getComputedStyle(resizableVideoContainer).width, 10);
+            startHeight = parseInt(document.defaultView.getComputedStyle(resizableVideoContainer).height, 10);
+
+            document.documentElement.addEventListener('mousemove', resize, false);
+            document.documentElement.addEventListener('mouseup', stopResize, false);
+        });
+
+        // Hàm thay đổi kích thước khi kéo
+        function resize(e) {
+            if (!isResizing) return;
+
+            resizableVideoContainer.style.width = (startWidth + e.clientX - startX) + 'px';
+            resizableVideoContainer.style.height = (startHeight + e.clientY - startY) + 'px';
+        }
+
+        // Dừng quá trình thay đổi kích thước
+        function stopResize() {
+            isResizing = false;
+            document.documentElement.removeEventListener('mousemove', resize, false);
+            document.documentElement.removeEventListener('mouseup', stopResize, false);
+        }
+    </script>
+
+    <script>
+        const resizableVideoContainer = document.getElementById('resizable-video-container');
+        const resizeHandle = document.getElementById('resize-handle');
+        let isResizing = false;
+
+        // Vị trí bắt đầu kéo
+        let startX, startY, startWidth, startHeight;
+
+        // Khi bắt đầu kéo để thay đổi kích thước
+        resizeHandle.addEventListener('mousedown', function (e) {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = parseInt(window.getComputedStyle(resizableVideoContainer).width, 10);
+            startHeight = parseInt(window.getComputedStyle(resizableVideoContainer).height, 10);
+
+            // Bắt đầu theo dõi di chuyển chuột
+            document.documentElement.addEventListener('mousemove', resize, false);
+            document.documentElement.addEventListener('mouseup', stopResize, false);
+        });
+
+        // Thay đổi kích thước container khi kéo
+        function resize(e) {
+            if (isResizing) {
+                resizableVideoContainer.style.width = (startWidth + e.clientX - startX) + 'px';
+                resizableVideoContainer.style.height = 'auto'; // Chiều cao co theo tỉ lệ video
+            }
+        }
+
+        // Dừng kéo thay đổi kích thước
+        function stopResize() {
+            isResizing = false;
+            document.documentElement.removeEventListener('mousemove', resize, false);
+            document.documentElement.removeEventListener('mouseup', stopResize, false);
+        }
+    </script>
+
+
+
+
+
+    <!-- Tùy chọn: CSS cho Timeline Tượng trưng -->
+    <style>
+        .event-dot.selected {
+            background-color: #28a745; /* Màu xanh lá cây */
+        }
+
+        .symbolic-timeline {
+            position: relative;
+            display: flex;
+            border: 1px solid #ccc;
+            height: 10px;
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: #f8f9fa;
+        }
+
+        .timeline-slot {
+            flex: 1;
+            border-right: 1px solid #fff;
+            position: relative; /* Để các event-dot được định vị chính xác bên trong */
+            overflow: hidden; /* Đảm bảo các điểm không bị tràn ra ngoài slot */
+        }
+
+        .timeline-slot:last-child {
+            border-right: none;
+        }
+
+        .event-dot {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 12px;
+            height: 12px;
+            background-color: #007bff;
+            border: 2px solid #fff; /* Đường viền trắng để điểm nổi bật */
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 2; /* Đảm bảo nằm trên slot */
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.5); /* Hiệu ứng đổ bóng nhẹ */
+        }
+
+        .event-dot:hover {
+            background-color: #0056b3;
+            box-shadow: 0 0 8px rgba(0, 86, 179, 0.7); /* Tăng hiệu ứng đổ bóng khi hover */
+        }
+
+        /* Điều chỉnh responsive */
+        @media (max-width: 768px) {
+            .symbolic-timeline {
+                max-width: 100%;
+                height: 40px;
+            }
+            .event-dot {
+                width: 10px;
+                height: 10px;
+            }
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+
+        .image-container {
+            width: 300px; /* Cố định chiều rộng của hình ảnh */
+        }
+
+        #drag-container {
+            border: 2px dashed #ccc;
+            padding: 10px;
+            position: relative;
+        }
+
+        #drag-container.dragging {
+            border-color: #007bff;
+        }
+
+        .video-container, .image-container {
+            cursor: move;  /* Đổi con trỏ khi kéo */
+        }
+
+        #resizable-video-container {
+            display: inline-flex;
+            /* Đảm bảo video luôn co theo container */
+            resize: none;
+            overflow: hidden;
+        }
+
+        #resize-handle {
+            width: 15px;
+            height: 15px;
+            background-color: rgba(0, 0, 0, 0.2); /* Tạo hiệu ứng tinh tế */
+            border-radius: 50%;
+            position: absolute;
+            right: 5px;
+            bottom: 5px;
+            cursor: se-resize; /* Con trỏ thay đổi kích thước */
+            z-index: 10;
+            border: 2px solid #fff; /* Đường viền trắng tinh tế */
+        }
+
+        #resize-handle:hover {
+            background-color: rgba(0, 0, 0, 0.4); /* Đậm hơn khi hover */
+        }
+
+    </style> 
+{% endblock main-content %}

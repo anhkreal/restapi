@@ -1,0 +1,130 @@
+{% load static %}
+<!DOCTYPE html>
+<!--[if lt IE 7]>      <html class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]>         <html class="no-js lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]>         <html class="no-js lt-ie9"> <![endif]-->
+<!--[if gt IE 8]>      <html class="no-js"> <!--<![endif]-->
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <!--css-->
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+        {% comment %} <link href="{% static 'app/css/style.css' %}" rel = "stylesheet">
+        <link href="{% static 'app/css/all.min.css' %}" rel = "stylesheet">
+        <link href="{% static 'app/css/owl.carousel.min.css' %}" rel = "stylesheet"> {% endcomment %}
+        <link href="../static/app/css/all.min.css" rel="stylesheet">
+        <link href="../static/app/css/owl.carousel.min.css" rel="stylesheet">
+        <link href="../static/app/css/style.css" rel="stylesheet">
+        {% block extra-css %} {% endblock %}
+        <!--js-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js" integrity="sha384-0pUGZvbkm6XF6gxjEnlmuGrJXVbNuzT9qBBavbLwCsOGabYfZo0T0to5eqruptLy" crossorigin="anonymous"></script>
+        {% comment %} <script src = "{% static 'app/js/all.min.js' %}"> </script>
+        <script src = "{% static 'app/js/owl.carousel.min.js' %}"> </script>
+        <script src = "{% static 'app/js/myscript.js' %}"> </script> {% endcomment %}
+        <link href="https://vjs.zencdn.net/7.10.2/video-js.css" rel="stylesheet" />
+        <script src="https://vjs.zencdn.net/7.10.2/video.min.js"></script>
+        <script src="../static/app/js/all.min.js"></script>
+        <script src="../static/app/js/owl.carousel.min.js"></script>
+        <script src="../static/app/js/myscript.js"></script>
+        {% block extra-js %} {% endblock %}
+        <title>Live camera feed</title>
+        <link rel="icon" href="{% static 'app/images/camera-logo.ico' %}" type="image/x-icon">
+        <meta name="description" content=""/>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="">
+    </head>
+    <body>
+        <!--[if lt IE 7]>
+            <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="#">upgrade your browser</a> to improve your experience.</p>
+        <![endif]-->
+
+        <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container-fluid">
+            <img id="camera-logo" src="{% static 'app/images/camera-logo.jpg' %}" alt="Lỗi logo" style="width: 50px;">
+            <a class="navbar-brand" href="#">Live Camera Feed</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="{% url 'home' %}">Trang chủ</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">Link</a>
+                    </li>
+                    <li class="nav-item dropdown" >
+                        <a class="nav-link dropdown-toggle" href = "#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Camera
+                        </a>
+                        
+                       <ul class="dropdown-menu" aria-disabled="true">
+                            {% for camera in cameras %}
+                                <li><a class="dropdown-item" href="{% url 'camera_detail' camera.id %}">{{ camera.name }}</a></li>
+                            {% endfor %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'new-camera' %}">Thêm mới camera</a></li>
+                        </ul>
+                    </li>
+                </ul>
+                <!-- <form class="d-flex" role="search">
+                    <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search">
+                    <button class="btn btn-outline-success" type="submit">Search</button>
+                </form> -->
+                <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Chào {{request.user}}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#">Thông tin cá nhân</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'logout' %}" onClick = "stopLayDuLieu()" id = "Exit">Thoát</a></li>
+                            <script>
+                            {% if request.user.is_authenticated %}
+                                tmp = document.getElementById("Exit");
+                                tmp.innerText = "Thoát";
+                            {% else %}
+                                tmp = document.getElementById("Exit");
+                                tmp.innerText = "Đăng nhập";
+                            {% endif %}
+                            </script>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        </nav>
+
+        
+    <!--main body-->
+    {% block main-content %} {% endblock main-content %}
+    <!--register-->
+    {% block register %} {% endblock register %}
+    <!--login-->
+    {% block login %} {% endblock login %}
+    <!--thêm mới camera-->
+    {% block new-camera %} {% endblock new-camera %}
+    <!---->
+    <!--footer-->
+    <footer class = "container-fluid bg-success text-center  p-2 mt-5">
+        © 2024 Camera Web App
+    </footer>
+    <script>
+        function checkLogin() {
+            {% if user.is_authenticated %}
+                // Nếu đã đăng nhập, cho phép chuyển hướng
+                return true;
+            {% else %}
+                // Nếu chưa đăng nhập, hiển thị thông báo
+                alert('Bạn hãy đăng nhập để thực hiện hành động này.');
+                return false; // Ngăn chặn chuyển hướng
+            {% endif %}
+        }
+    </script>
+
+    </body>
+</html>
